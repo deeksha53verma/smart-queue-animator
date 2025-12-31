@@ -1,4 +1,4 @@
-import { GanttChartEntry, Process } from '@/types/process';
+import { GanttChartEntry, Process, PROCESS_TYPE_CONFIG } from '@/types/process';
 import { cn } from '@/lib/utils';
 import { useRef, useEffect } from 'react';
 
@@ -49,47 +49,40 @@ export function SimpleGanttChart({ entries, processes, currentTime }: SimpleGant
       </div>
 
       <div
-        ref={scrollRef}
-        className="overflow-x-auto pb-4 scrollbar-thin scrollbar-thumb-primary/20 scrollbar-track-transparent"
+        className="overflow-x-auto pb-4"
       >
-        <div className="relative min-w-[800px]" style={{ height: '120px' }}>
-          {/* Timeline grid */}
-          <div className="absolute inset-x-0 bottom-8 h-px bg-border" />
+        <div className="relative min-w-[800px]" style={{ height: '140px' }}>
+          {/* Static Timeline grid */}
+          <div className="absolute inset-x-0 bottom-8 h-px bg-foreground/20" />
 
-          {/* Time markers and Grid lines */}
+          {/* Time markers (Static) */}
           <div className="absolute inset-x-0 bottom-0 top-0 flex pointer-events-none">
             {Array.from({ length: maxTime + 1 }).map((_, i) => (
               <div
                 key={i}
-                className="flex-shrink-0 flex flex-col items-center group"
-                style={{ width: '60px' }}
+                className="flex-shrink-0 flex flex-col items-center"
+                style={{ width: '60px' }} // Fixed scale
               >
-                <div className="w-px h-full bg-border/30 group-hover:bg-border/60 transition-colors" />
-                <span className="absolute bottom-1 text-[10px] text-muted-foreground font-mono bg-background/80 px-1 rounded">
-                  {i}s
+                <div className="w-px h-full bg-border/20" />
+                <span className="absolute bottom-1 text-[10px] text-foreground/70 font-mono">
+                  {i}
                 </span>
               </div>
             ))}
           </div>
 
-          {/* Current time indicator */}
-          <div
-            className="absolute top-0 bottom-8 w-0.5 bg-primary transition-all duration-300 z-10"
-            style={{ left: `${currentTime * 60 + 30}px` }}
-          >
-            <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-4 h-4 rounded-full bg-primary shadow-lg shadow-primary/50 flex items-center justify-center">
-              <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
-            </div>
-            {/* Current Time Badge */}
-            <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground text-[10px] px-2 py-0.5 rounded-full font-mono whitespace-nowrap shadow-md">
-              T={currentTime}
-            </div>
-          </div>
-
-          {/* Gantt bars */}
-          <div className="absolute inset-x-0 top-8 bottom-12 flex items-center">
+          {/* Gantt bars (Static blocks) */}
+          <div className="absolute inset-x-0 top-6 bottom-10 flex items-center">
             {entries.map((entry, idx) => {
-              const color = entry.isContextSwitch ? 'bg-muted/50 border border-border text-muted-foreground' : (processColorMap.current[entry.processId] || colors[0]);
+              // Map entry process to type color if available, else usage hash
+              const process = processes.find(p => p.id === entry.processId);
+              const typeConfig = process ? PROCESS_TYPE_CONFIG[process.type] : null;
+
+              // Use explicit hex colors from config or fallback
+              const colorClass = entry.isContextSwitch
+                ? 'bg-gray-400/50 border-gray-500'
+                : (typeConfig ? typeConfig.color : (processColorMap.current[entry.processId] || colors[0]));
+
               const width = (entry.endTime - entry.startTime) * 60;
               const left = entry.startTime * 60;
 
@@ -97,21 +90,22 @@ export function SimpleGanttChart({ entries, processes, currentTime }: SimpleGant
                 <div
                   key={`${entry.processId}-${entry.startTime}-${idx}`}
                   className={cn(
-                    'absolute h-14 rounded-md flex flex-col items-center justify-center text-xs font-semibold shadow-sm overflow-hidden border border-white/10',
-                    'transition-all duration-300 hover:shadow-md hover:scale-[1.02] z-0 hover:z-20 cursor-default',
-                    color
+                    'absolute h-16 flex flex-col items-center justify-center text-xs font-bold shadow-sm',
+                    'border-2 border-white/20', // Solid border for block look
+                    colorClass,
+                    // Remove animation classes
                   )}
                   style={{
-                    left: `${left + 2}px`,
-                    width: `${Math.max(width - 4, 24)}px`,
+                    left: `${left}px`,
+                    width: `${width}px`,
                   }}
                   title={`${entry.processName}: ${entry.startTime}-${entry.endTime}`}
                 >
-                  <span className="truncate w-full text-center px-1 text-white text-xs drop-shadow-md">
+                  <span className="truncate w-full text-center px-1 text-white shadow-sm">
                     {entry.processName}
                   </span>
                   {!entry.isContextSwitch && width > 40 && (
-                    <span className="text-[9px] opacity-80 text-white font-mono">
+                    <span className="text-[10px] text-white/90 font-mono">
                       {entry.endTime - entry.startTime}ms
                     </span>
                   )}
@@ -121,24 +115,27 @@ export function SimpleGanttChart({ entries, processes, currentTime }: SimpleGant
           </div>
 
           {entries.length === 0 && (
-            <div className="absolute inset-0 flex items-center justify-center text-muted-foreground text-sm">
-              <div className="text-center p-4 bg-muted/20 rounded-xl border border-dashed border-border">
-                Add processes and start to see timeline
-              </div>
+            <div className="absolute inset-0 flex items-center justify-center text-muted-foreground text-sm font-medium bg-muted/10 rounded-xl border border-dashed border-border/50">
+              Start simulation to verify timeline
             </div>
           )}
         </div>
       </div>
 
-      {/* Legend */}
+      {/* Legend with new colors */}
       {processes.length > 0 && (
-        <div className="flex flex-wrap gap-3 mt-4 pt-4 border-t border-border">
-          {processes.map((p) => (
-            <div key={p.id} className="flex items-center gap-2 text-xs">
-              <div className={cn('w-3 h-3 rounded bg-gradient-to-r', processColorMap.current[p.id])} />
-              <span className="text-muted-foreground">{p.name}</span>
+        <div className="flex flex-wrap gap-4 mt-6 pt-4 border-t border-border/50">
+          <span className="text-xs font-semibold uppercase text-muted-foreground mr-2">Legend:</span>
+          {Object.entries(PROCESS_TYPE_CONFIG).map(([type, config]) => (
+            <div key={type} className="flex items-center gap-2 text-xs">
+              <div className={cn('w-4 h-4 rounded shadow-sm border border-white/10', config.color)} />
+              <span className="text-foreground font-medium">{config.label}</span>
             </div>
           ))}
+          <div className="flex items-center gap-2 text-xs">
+            <div className="w-4 h-4 rounded bg-gray-400/50 border border-gray-500" />
+            <span className="text-foreground font-medium">Context Switch</span>
+          </div>
         </div>
       )}
     </div>

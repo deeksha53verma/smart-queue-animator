@@ -10,7 +10,7 @@ export function useScheduler() {
   const [isPaused, setIsPaused] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [ganttChart, setGanttChart] = useState<GanttChartEntry[]>([]);
-  const [speed, setSpeed] = useState(1);
+  const [speed, setSpeed] = useState(0.5);
   const [timeQuantum, setTimeQuantum] = useState(2);
   const [contextSwitchDuration, setContextSwitchDuration] = useState(0.5); // Default 0.5s (simulated as ticks)
   const [isContextSwitching, setIsContextSwitching] = useState(false);
@@ -359,21 +359,31 @@ export function useScheduler() {
     setCurrentTime((prev) => prev + 1);
   }, [currentTime, algorithm, timeQuantum, processes.length, contextSwitchDuration, isContextSwitching]);
 
-  // Use useEffect for the simulation loop to avoid stale closures
+  // Use a ref to hold the latest runSimulationStep without triggering effect
+  const runSimulationStepRef = useRef(runSimulationStep);
+
   useEffect(() => {
-    let interval: NodeJS.Timeout;
+    runSimulationStepRef.current = runSimulationStep;
+  }, [runSimulationStep]);
+
+  useEffect(() => {
+    let timeoutId: NodeJS.Timeout;
+
+    const loop = () => {
+      if (isRunning && !isPaused) {
+        runSimulationStepRef.current();
+        timeoutId = setTimeout(loop, 1000 / speed);
+      }
+    };
 
     if (isRunning && !isPaused) {
-      runSimulationStep(); // Run immediately so we don't wait for first interval
-      interval = setInterval(() => {
-        runSimulationStep();
-      }, 1000 / speed);
+      timeoutId = setTimeout(loop, 1000 / speed);
     }
 
     return () => {
-      if (interval) clearInterval(interval);
+      if (timeoutId) clearTimeout(timeoutId);
     };
-  }, [isRunning, isPaused, speed, runSimulationStep]);
+  }, [isRunning, isPaused, speed]);
 
   const startSimulation = useCallback(() => {
     if (processes.length === 0) {

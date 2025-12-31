@@ -8,6 +8,7 @@ import { StatsCards } from '@/components/StatsCards';
 import { ConceptCard } from '@/components/ConceptCard';
 import { AddProcessModal } from '@/components/AddProcessModal';
 import { DecisionLog } from '@/components/DecisionLog';
+import { ProcessStateTable } from '@/components/ProcessStateTable';
 import { Cpu, Sparkles } from 'lucide-react';
 
 const Index = () => {
@@ -140,57 +141,9 @@ const Index = () => {
                 currentTime={stats.currentTime}
               />
 
-              {/* Process List (if any) */}
+              {/* Process State Monitor */}
               {processes.length > 0 && (
-                <div className="glass-card p-5">
-                  <h3 className="font-display text-lg font-semibold text-foreground mb-4">
-                    All Processes ({processes.length})
-                  </h3>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b border-border">
-                          <th className="text-left py-2 px-3 text-muted-foreground font-medium">Name</th>
-                          <th className="text-center py-2 px-3 text-muted-foreground font-medium">Status</th>
-                          <th className="text-center py-2 px-3 text-muted-foreground font-medium">Arrival</th>
-                          <th className="text-center py-2 px-3 text-muted-foreground font-medium">Burst</th>
-                          <th className="text-center py-2 px-3 text-muted-foreground font-medium">Priority</th>
-                          <th className="text-center py-2 px-3 text-muted-foreground font-medium">Remaining</th>
-                          <th className="text-center py-2 px-3 text-muted-foreground font-medium">Wait</th>
-                          <th className="text-center py-2 px-3 text-muted-foreground font-medium">Turnaround</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {processes.map((p, idx) => (
-                          <tr
-                            key={p.id}
-                            className={`border-b border-border/50 animate-slide-up ${p.state === 'running' ? 'bg-success/5' : ''}`}
-                            style={{ animationDelay: `${idx * 30}ms` }}
-                          >
-                            <td className="py-3 px-3 font-medium">{p.name}</td>
-                            <td className="py-3 px-3 text-center">
-                              <span className={`process-pill state-${p.state}`}>
-                                {p.state}
-                              </span>
-                            </td>
-                            <td className="py-3 px-3 text-center text-muted-foreground">{p.arrivalTime}</td>
-                            <td className="py-3 px-3 text-center text-muted-foreground">{p.burstTime}</td>
-                            <td className="py-3 px-3 text-center text-muted-foreground">{p.priority}</td>
-                            <td className="py-3 px-3 text-center font-mono">
-                              {p.state === 'terminated' ? '—' : `${p.remainingTime}ms`}
-                            </td>
-                            <td className="py-3 px-3 text-center text-muted-foreground">
-                              {p.state === 'terminated' ? `${p.waitingTime}ms` : '—'}
-                            </td>
-                            <td className="py-3 px-3 text-center text-muted-foreground">
-                              {p.state === 'terminated' ? `${p.turnaroundTime}ms` : '—'}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
+                <ProcessStateTable processes={processes} currentTime={stats.currentTime} />
               )}
 
               {/* Empty State */}

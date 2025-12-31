@@ -28,11 +28,11 @@ export interface Process {
   totalIOTime?: number;
 }
 
-export const PROCESS_TYPE_CONFIG: Record<ProcessType, { label: string; color: string; defaultPriority: number; defaultBurst: number }> = {
-  system: { label: 'System Update', color: 'bg-red-500', defaultPriority: 1, defaultBurst: 10 },
-  interactive: { label: 'Interactive (Browser)', color: 'bg-blue-500', defaultPriority: 2, defaultBurst: 4 },
-  user: { label: 'User App', color: 'bg-green-500', defaultPriority: 3, defaultBurst: 6 },
-  batch: { label: 'Batch Job', color: 'bg-purple-500', defaultPriority: 4, defaultBurst: 15 },
+export const PROCESS_TYPE_CONFIG: Record<ProcessType, { label: string; color: string; hover: string; defaultPriority: number; defaultBurst: number }> = {
+  system: { label: 'System Update', color: 'bg-[#FF3333]', hover: 'hover:bg-[#CC0000]', defaultPriority: 1, defaultBurst: 10 },
+  interactive: { label: 'Interactive', color: 'bg-[#3366FF]', hover: 'hover:bg-[#0033CC]', defaultPriority: 2, defaultBurst: 4 },
+  user: { label: 'User App', color: 'bg-[#33CC33]', hover: 'hover:bg-[#009900]', defaultPriority: 3, defaultBurst: 6 },
+  batch: { label: 'Batch Job', color: 'bg-[#9933FF]', hover: 'hover:bg-[#6600CC]', defaultPriority: 4, defaultBurst: 15 },
 };
 
 export const PROCESS_OPERATIONS: Record<ProcessType, string[]> = {
