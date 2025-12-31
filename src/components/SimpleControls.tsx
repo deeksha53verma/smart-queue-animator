@@ -16,6 +16,8 @@ interface SimpleControlsProps {
   hasProcesses: boolean;
   speed: number;
   onSpeedChange: (speed: number) => void;
+  contextSwitchDuration?: number;
+  onContextSwitchDurationChange?: (duration: number) => void;
 }
 
 const algorithms: { id: SchedulingAlgorithm; label: string; short: string }[] = [
@@ -38,6 +40,8 @@ export function SimpleControls({
   hasProcesses,
   speed,
   onSpeedChange,
+  contextSwitchDuration = 0,
+  onContextSwitchDurationChange,
 }: SimpleControlsProps) {
   return (
     <div className="glass-card p-5 space-y-5">
@@ -83,11 +87,38 @@ export function SimpleControls({
                   : 'bg-muted text-muted-foreground hover:bg-muted/80'
               )}
             >
-              {s}x
+              {s === 0.5 ? 'Slow' : s + 'x'}
             </button>
           ))}
         </div>
       </div>
+
+      {/* Context Switch Duration (Only valid for enabled contexts) */}
+      {onContextSwitchDurationChange && (
+        <div>
+          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3 block">
+            Context Switch Overhead (ms)
+          </label>
+          <div className="flex gap-2">
+            {[0, 1, 2, 3].map((d) => (
+              <button
+                key={d}
+                onClick={() => onContextSwitchDurationChange(d)}
+                disabled={isRunning}
+                className={cn(
+                  'flex-1 py-1.5 rounded-lg text-xs font-medium transition-all duration-200',
+                  contextSwitchDuration === d
+                    ? 'bg-primary/20 text-primary border border-primary/30'
+                    : 'bg-muted text-muted-foreground hover:bg-muted/80',
+                  isRunning && 'opacity-70 cursor-not-allowed'
+                )}
+              >
+                {d}ms
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Action Buttons */}
       <div className="grid grid-cols-2 gap-3 pt-2">

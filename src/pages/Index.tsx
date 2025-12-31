@@ -1,16 +1,18 @@
 import { useState } from 'react';
-import { useScheduler } from '@/hooks/useScheduler';
+import { Link } from 'react-router-dom';
+import { useSchedulerContext } from '@/context/SchedulerContext';
 import { SimpleControls } from '@/components/SimpleControls';
-import { QueueVisualizer } from '@/components/QueueVisualizer';
+import { AdvancedQueueVisualizer } from '@/components/AdvancedQueueVisualizer';
 import { SimpleGanttChart } from '@/components/SimpleGanttChart';
 import { StatsCards } from '@/components/StatsCards';
 import { ConceptCard } from '@/components/ConceptCard';
 import { AddProcessModal } from '@/components/AddProcessModal';
+import { DecisionLog } from '@/components/DecisionLog';
 import { Cpu, Sparkles } from 'lucide-react';
 
 const Index = () => {
   const [showAddModal, setShowAddModal] = useState(false);
-  
+
   const {
     processes,
     algorithm,
@@ -31,7 +33,11 @@ const Index = () => {
     stepSimulation,
     resetSimulation,
     allCompleted,
-  } = useScheduler();
+    logs,
+    isContextSwitching,
+    contextSwitchDuration,
+    setContextSwitchDuration
+  } = useSchedulerContext();
 
   return (
     <div className="min-h-screen bg-background">
@@ -73,6 +79,14 @@ const Index = () => {
                     {stats.currentTime}
                   </span>
                 </div>
+
+                <Link
+                  to="/analysis"
+                  className="px-4 py-2 bg-primary/10 text-primary hover:bg-primary/20 rounded-xl text-sm font-medium transition-colors flex items-center gap-2"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  View Analysis
+                </Link>
               </div>
             </div>
           </div>
@@ -100,17 +114,23 @@ const Index = () => {
                 hasProcesses={processes.length > 0}
                 speed={speed}
                 onSpeedChange={setSpeed}
+                contextSwitchDuration={contextSwitchDuration}
+                onContextSwitchDurationChange={setContextSwitchDuration}
               />
-              
+
               <ConceptCard algorithm={algorithm} />
+
+              <DecisionLog logs={logs} />
             </div>
 
             {/* Right: Visualizations */}
             <div className="lg:col-span-2 space-y-6">
               {/* Process Flow */}
-              <QueueVisualizer 
-                processes={processes} 
-                onRemove={removeProcess} 
+              <AdvancedQueueVisualizer
+                processes={processes}
+                onRemove={removeProcess}
+                isContextSwitching={isContextSwitching}
+                speed={speed}
               />
 
               {/* Gantt Chart */}
@@ -142,8 +162,8 @@ const Index = () => {
                       </thead>
                       <tbody>
                         {processes.map((p, idx) => (
-                          <tr 
-                            key={p.id} 
+                          <tr
+                            key={p.id}
                             className={`border-b border-border/50 animate-slide-up ${p.state === 'running' ? 'bg-success/5' : ''}`}
                             style={{ animationDelay: `${idx * 30}ms` }}
                           >

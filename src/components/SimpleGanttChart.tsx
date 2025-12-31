@@ -48,57 +48,73 @@ export function SimpleGanttChart({ entries, processes, currentTime }: SimpleGant
         </span>
       </div>
 
-      <div 
+      <div
         ref={scrollRef}
-        className="overflow-x-auto pb-2"
+        className="overflow-x-auto pb-4 scrollbar-thin scrollbar-thumb-primary/20 scrollbar-track-transparent"
       >
-        <div className="relative min-w-[600px]" style={{ height: '80px' }}>
+        <div className="relative min-w-[800px]" style={{ height: '120px' }}>
           {/* Timeline grid */}
-          <div className="absolute inset-x-0 bottom-6 h-px bg-border" />
-          
-          {/* Time markers */}
-          <div className="absolute inset-x-0 bottom-0 flex">
+          <div className="absolute inset-x-0 bottom-8 h-px bg-border" />
+
+          {/* Time markers and Grid lines */}
+          <div className="absolute inset-x-0 bottom-0 top-0 flex pointer-events-none">
             {Array.from({ length: maxTime + 1 }).map((_, i) => (
               <div
                 key={i}
-                className="flex-shrink-0 flex flex-col items-center"
-                style={{ width: '40px' }}
+                className="flex-shrink-0 flex flex-col items-center group"
+                style={{ width: '60px' }}
               >
-                <div className="w-px h-2 bg-border" />
-                <span className="text-[10px] text-muted-foreground mt-1">{i}</span>
+                <div className="w-px h-full bg-border/30 group-hover:bg-border/60 transition-colors" />
+                <span className="absolute bottom-1 text-[10px] text-muted-foreground font-mono bg-background/80 px-1 rounded">
+                  {i}s
+                </span>
               </div>
             ))}
           </div>
 
           {/* Current time indicator */}
           <div
-            className="absolute top-0 bottom-6 w-0.5 bg-primary transition-all duration-300 z-10"
-            style={{ left: `${currentTime * 40 + 20}px` }}
+            className="absolute top-0 bottom-8 w-0.5 bg-primary transition-all duration-300 z-10"
+            style={{ left: `${currentTime * 60 + 30}px` }}
           >
-            <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-3 h-3 rounded-full bg-primary shadow-lg shadow-primary/50" />
+            <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-4 h-4 rounded-full bg-primary shadow-lg shadow-primary/50 flex items-center justify-center">
+              <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
+            </div>
+            {/* Current Time Badge */}
+            <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground text-[10px] px-2 py-0.5 rounded-full font-mono whitespace-nowrap shadow-md">
+              T={currentTime}
+            </div>
           </div>
 
           {/* Gantt bars */}
-          <div className="absolute inset-x-0 top-4 bottom-10 flex items-center">
+          <div className="absolute inset-x-0 top-8 bottom-12 flex items-center">
             {entries.map((entry, idx) => {
-              const color = processColorMap.current[entry.processId] || colors[0];
-              const width = (entry.endTime - entry.startTime) * 40;
-              const left = entry.startTime * 40;
+              const color = entry.isContextSwitch ? 'bg-muted/50 border border-border text-muted-foreground' : (processColorMap.current[entry.processId] || colors[0]);
+              const width = (entry.endTime - entry.startTime) * 60;
+              const left = entry.startTime * 60;
 
               return (
                 <div
                   key={`${entry.processId}-${entry.startTime}-${idx}`}
                   className={cn(
-                    'absolute h-10 rounded-lg flex items-center justify-center text-xs font-semibold text-white shadow-md',
-                    'bg-gradient-to-r animate-scale-in',
+                    'absolute h-14 rounded-md flex flex-col items-center justify-center text-xs font-semibold shadow-sm overflow-hidden border border-white/10',
+                    'transition-all duration-300 hover:shadow-md hover:scale-[1.02] z-0 hover:z-20 cursor-default',
                     color
                   )}
                   style={{
-                    left: `${left + 4}px`,
-                    width: `${Math.max(width - 8, 24)}px`,
+                    left: `${left + 2}px`,
+                    width: `${Math.max(width - 4, 24)}px`,
                   }}
+                  title={`${entry.processName}: ${entry.startTime}-${entry.endTime}`}
                 >
-                  {entry.processName.slice(0, 4)}
+                  <span className="truncate w-full text-center px-1 text-white text-xs drop-shadow-md">
+                    {entry.processName}
+                  </span>
+                  {!entry.isContextSwitch && width > 40 && (
+                    <span className="text-[9px] opacity-80 text-white font-mono">
+                      {entry.endTime - entry.startTime}ms
+                    </span>
+                  )}
                 </div>
               );
             })}
@@ -106,7 +122,9 @@ export function SimpleGanttChart({ entries, processes, currentTime }: SimpleGant
 
           {entries.length === 0 && (
             <div className="absolute inset-0 flex items-center justify-center text-muted-foreground text-sm">
-              Add processes and start to see timeline
+              <div className="text-center p-4 bg-muted/20 rounded-xl border border-dashed border-border">
+                Add processes and start to see timeline
+              </div>
             </div>
           )}
         </div>

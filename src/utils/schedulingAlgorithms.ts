@@ -23,47 +23,37 @@ export const algorithmInfo: Record<SchedulingAlgorithm, AlgorithmInfo> = {
   },
   sjf: {
     name: 'Shortest Job First (SJF)',
-    description: 'Process with the smallest burst time is selected next from the ready queue.',
-    concept: 'Non-preemptive scheduling that minimizes average waiting time. Optimal for batch systems.',
+    description: 'Process with the smallest total burst time is selected next.',
+    concept: 'Non-preemptive algorithm by default. Selects the process with the shortest execution time from the ready queue.',
     pseudocode: `function SJF(processes):
-  current_time = 0
-  completed = []
-  
-  while processes not empty:
-    available = filter(p => p.arrival <= current_time)
-    if available is empty:
-      current_time = min(process.arrival)
-      continue
-    
-    shortest = min(available, by burst_time)
-    execute(shortest)
-    shortest.waiting = current_time - shortest.arrival
-    current_time += shortest.burst_time
-    completed.push(shortest)`,
-    pros: ['Minimum average waiting time', 'Good for batch systems', 'Efficient CPU utilization'],
-    cons: ['Starvation of long processes', 'Requires burst time prediction', 'Not suitable for interactive'],
+  // Sort by Burst Time, then Arrival Time
+  ready_queue.sort((a, b) => {
+    if (a.burst != b.burst) return a.burst - b.burst
+    return a.arrival - b.arrival
+  })
+
+  // Select first process
+  next_process = ready_queue[0]
+  execute_until_completion(next_process)`,
+    pros: ['Minimum average waiting time', 'Optimal for batch systems'],
+    cons: ['Starvation of long processes', 'Requires knowing burst time in advance'],
   },
   priority: {
     name: 'Priority Scheduling',
-    description: 'Each process is assigned a priority. Higher priority processes execute first.',
-    concept: 'Can be preemptive or non-preemptive. Lower number = higher priority in this simulation.',
+    description: 'Processes with higher priority (lower number) execute first.',
+    concept: 'Selects the highest priority process from the ready queue. Be careful of starvation!',
     pseudocode: `function Priority(processes):
-  current_time = 0
-  
-  while processes not empty:
-    available = filter(p => p.arrival <= current_time)
-    if available is empty:
-      current_time = min(process.arrival)
-      continue
-    
-    highest = min(available, by priority_number)
-    // Lower priority number = higher priority
-    execute(highest)
-    highest.waiting = current_time - highest.arrival
-    current_time += highest.burst_time
-    mark as completed`,
-    pros: ['Important tasks run first', 'Flexible prioritization', 'Good for real-time systems'],
-    cons: ['Starvation possible', 'Priority inversion problem', 'Subjective priority assignment'],
+  // Sort by Priority (Ascending), then Arrival
+  ready_queue.sort((a, b) => {
+    if (a.priority != b.priority) 
+      return a.priority - b.priority
+    return a.arrival - b.arrival
+  })
+
+  next_process = ready_queue[0]
+  execute(next_process)`,
+    pros: ['Handles important tasks first', 'Good for real-time systems'],
+    cons: ['Starvation of low-pri processes (solved by aging)', 'Indefinite blocking'],
   },
   'round-robin': {
     name: 'Round Robin (RR)',
@@ -115,16 +105,25 @@ export function getNextProcess(
       );
 
     case 'sjf':
+      // Non-preemptive SJF: Select process with shortest initial burst time
+      // Note: In non-preemptive, we typically don't interrupt, but this function is called
+      // when CPU is free.
       return readyProcesses.reduce((prev, curr) =>
-        prev.remainingTime <= curr.remainingTime ? prev : curr
+        prev.burstTime < curr.burstTime ? prev :
+          // Tie-breaker: Arrival time
+          (prev.burstTime === curr.burstTime && prev.arrivalTime < curr.arrivalTime) ? prev : curr
       );
 
     case 'priority':
       return readyProcesses.reduce((prev, curr) =>
-        prev.priority <= curr.priority ? prev : curr
+        // Lower number = Top priority
+        prev.priority < curr.priority ? prev :
+          // Tie-breaker: Arrival time
+          (prev.priority === curr.priority && prev.arrivalTime < curr.arrivalTime) ? prev : curr
       );
 
     case 'round-robin':
+      // Round robin selection is handled by the queue rotation in the hook
       return readyProcesses[0];
 
     default:
@@ -134,7 +133,7 @@ export function getNextProcess(
 
 export function calculateStats(processes: Process[], currentTime: number) {
   const completed = processes.filter((p) => p.state === 'terminated');
-  
+
   if (completed.length === 0) {
     return {
       cpuUtilization: 0,
