@@ -16,15 +16,19 @@ interface SimpleControlsProps {
   hasProcesses: boolean;
   speed: number;
   onSpeedChange: (speed: number) => void;
-  contextSwitchDuration?: number;
-  onContextSwitchDurationChange?: (duration: number) => void;
+  timeQuantum?: number;
+  onTimeQuantumChange?: (quantum: number) => void;
 }
 
 const algorithms: { id: SchedulingAlgorithm; label: string; short: string }[] = [
   { id: 'fcfs', label: 'First Come First Serve', short: 'FCFS' },
   { id: 'sjf', label: 'Shortest Job First', short: 'SJF' },
+  { id: 'srtf', label: 'Shortest Remaining Time', short: 'SRTF' },
   { id: 'priority', label: 'Priority', short: 'Priority' },
   { id: 'round-robin', label: 'Round Robin', short: 'RR' },
+  { id: 'edf', label: 'Earliest Deadline First', short: 'EDF' },
+  { id: 'mlq', label: 'Multilevel Queue', short: 'MLQ' },
+  { id: 'mlfq', label: 'Multilevel Feedback Queue', short: 'MLFQ' },
 ];
 
 export function SimpleControls({
@@ -40,8 +44,8 @@ export function SimpleControls({
   hasProcesses,
   speed,
   onSpeedChange,
-  contextSwitchDuration = 0,
-  onContextSwitchDurationChange,
+  timeQuantum,
+  onTimeQuantumChange,
 }: SimpleControlsProps) {
   return (
     <div className="glass-card p-5 space-y-5">
@@ -93,27 +97,27 @@ export function SimpleControls({
         </div>
       </div>
 
-      {/* Context Switch Duration (Only valid for enabled contexts) */}
-      {onContextSwitchDurationChange && (
-        <div>
+      {/* Time Quantum (Round Robin only) */}
+      {algorithm === 'round-robin' && onTimeQuantumChange && (
+        <div className="animate-in slide-in-from-top-1 fade-in duration-200">
           <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3 block">
-            Context Switch Overhead (ms)
+            Time Slice (Quantum)
           </label>
           <div className="flex gap-2">
-            {[0, 1, 2, 3].map((d) => (
+            {[1, 2, 3, 4, 5].map((q) => (
               <button
-                key={d}
-                onClick={() => onContextSwitchDurationChange(d)}
+                key={q}
+                onClick={() => onTimeQuantumChange(q)}
                 disabled={isRunning}
                 className={cn(
                   'flex-1 py-1.5 rounded-lg text-xs font-medium transition-all duration-200',
-                  contextSwitchDuration === d
+                  timeQuantum === q
                     ? 'bg-primary/20 text-primary border border-primary/30'
                     : 'bg-muted text-muted-foreground hover:bg-muted/80',
                   isRunning && 'opacity-70 cursor-not-allowed'
                 )}
               >
-                {d}ms
+                {q}
               </button>
             ))}
           </div>

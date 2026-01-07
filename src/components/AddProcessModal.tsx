@@ -5,19 +5,21 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Shuffle, Sparkles } from 'lucide-react';
-import { ProcessType, PROCESS_TYPE_CONFIG } from '@/types/process';
+import { ProcessType, PROCESS_TYPE_CONFIG, SchedulingAlgorithm } from '@/types/process';
 
 interface AddProcessModalProps {
   open: boolean;
   onClose: () => void;
-  onAdd: (name: string, arrivalTime: number, burstTime: number, priority: number, type: ProcessType, ioStartTime?: number, ioDuration?: number) => void;
+  onAdd: (name: string, arrivalTime: number, burstTime: number, priority: number, type: ProcessType, ioStartTime?: number, ioDuration?: number, deadline?: number) => void;
+  algorithm: SchedulingAlgorithm;
 }
 
-export function AddProcessModal({ open, onClose, onAdd }: AddProcessModalProps) {
+export function AddProcessModal({ open, onClose, onAdd, algorithm }: AddProcessModalProps) {
   const [name, setName] = useState('');
   const [arrivalTime, setArrivalTime] = useState('0');
   const [burstTime, setBurstTime] = useState('5');
   const [priority, setPriority] = useState('1');
+  const [deadline, setDeadline] = useState('20');
   const [type, setType] = useState<ProcessType>('user');
   const [ioEnabled, setIoEnabled] = useState(false);
   const [ioStartTime, setIoStartTime] = useState('2');
@@ -33,7 +35,8 @@ export function AddProcessModal({ open, onClose, onAdd }: AddProcessModalProps) 
       Math.max(1, parseInt(priority) || 1),
       type,
       ioEnabled ? Math.max(0, parseInt(ioStartTime) || 0) : undefined,
-      ioEnabled ? Math.max(1, parseInt(ioDuration) || 0) : undefined
+      ioEnabled ? Math.max(1, parseInt(ioDuration) || 0) : undefined,
+      algorithm === 'edf' ? Math.max(0, parseInt(deadline) || 0) : undefined
     );
     resetForm();
     onClose();
@@ -54,7 +57,10 @@ export function AddProcessModal({ open, onClose, onAdd }: AddProcessModalProps) 
     const ioStart = hasIO ? Math.floor(Math.random() * (burst - 1)) : undefined;
     const ioDur = hasIO ? Math.floor(Math.random() * 5) + 1 : undefined;
 
-    onAdd(processName, arrival, burst, prio, randomType, ioStart, ioDur);
+    // Random Deadline for EDF
+    const randDeadline = arrival + burst + Math.floor(Math.random() * 20);
+
+    onAdd(processName, arrival, burst, prio, randomType, ioStart, ioDur, algorithm === 'edf' ? randDeadline : undefined);
     onClose();
   };
 
@@ -150,19 +156,38 @@ export function AddProcessModal({ open, onClose, onAdd }: AddProcessModalProps) 
               />
             </div>
 
-            <div className="col-span-2">
-              <Label htmlFor="priority" className="text-xs text-muted-foreground">
-                Priority (1 = Highest)
-              </Label>
-              <Input
-                id="priority"
-                type="number"
-                min="1"
-                value={priority}
-                onChange={(e) => setPriority(e.target.value)}
-                className="mt-1.5"
-              />
-            </div>
+            {algorithm === 'priority' && (
+              <div className="col-span-2 animate-in slide-in-from-top-1 fade-in duration-200">
+                <Label htmlFor="priority" className="text-xs text-muted-foreground">
+                  Priority (1 = Highest)
+                </Label>
+                <Input
+                  id="priority"
+                  type="number"
+                  min="1"
+                  value={priority}
+                  onChange={(e) => setPriority(e.target.value)}
+                  className="mt-1.5"
+                />
+              </div>
+            )}
+
+            {algorithm === 'edf' && (
+              <div className="col-span-2 animate-in slide-in-from-top-1 fade-in duration-200">
+                <Label htmlFor="deadline" className="text-xs text-muted-foreground">
+                  Deadline (Relative Time)
+                </Label>
+                <Input
+                  id="deadline"
+                  type="number"
+                  min="1"
+                  value={deadline}
+                  onChange={(e) => setDeadline(e.target.value)}
+                  placeholder="e.g. 20"
+                  className="mt-1.5"
+                />
+              </div>
+            )}
 
             <div className="col-span-2 pt-2 border-t border-border/40">
               <div className="flex items-center gap-2 mb-2 cursor-pointer" onClick={() => setIoEnabled(!ioEnabled)}>

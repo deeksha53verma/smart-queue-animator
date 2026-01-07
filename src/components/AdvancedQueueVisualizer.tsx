@@ -1,17 +1,50 @@
-import { Process, PROCESS_TYPE_CONFIG, PROCESS_OPERATIONS, ProcessType } from '@/types/process';
+import { Process, PROCESS_TYPE_CONFIG, PROCESS_OPERATIONS, ProcessType, SchedulingAlgorithm } from '@/types/process';
 import { ArrowRight, Cpu, Layers, HardDrive, TerminalSquare, Activity } from 'lucide-react';
 import { useMemo, useState, useEffect } from 'react';
 
 interface AdvancedQueueVisualizerProps {
     processes: Process[];
     onRemove: (id: string) => void;
-    isContextSwitching?: boolean;
     speed?: number;
+    algorithm?: SchedulingAlgorithm;
 }
 
-export function AdvancedQueueVisualizer({ processes, isContextSwitching = false, speed = 1 }: AdvancedQueueVisualizerProps) {
-    // Filter processes by state
-    const readyParams = processes.filter(p => p.state === 'ready' || p.state === 'new').sort((a, b) => a.arrivalTime - b.arrivalTime);
+export function AdvancedQueueVisualizer({ processes, speed = 1, algorithm = 'fcfs' }: AdvancedQueueVisualizerProps) {
+    // Group processes based on algorithm
+    const readyQueues = useMemo(() => {
+        const ready = processes.filter(p => p.state === 'ready' || p.state === 'new').sort((a, b) => a.arrivalTime - b.arrivalTime);
+
+        if (algorithm === 'mlfq') {
+            return [
+                { id: 'q0', title: 'Queue 0 (RR-4)', processes: ready.filter(p => (p.queueLevel || 0) === 0) },
+                { id: 'q1', title: 'Queue 1 (RR-8)', processes: ready.filter(p => (p.queueLevel || 0) === 1) },
+                { id: 'q2', title: 'Queue 2 (FCFS)', processes: ready.filter(p => (p.queueLevel || 0) >= 2) },
+            ];
+        }
+        else if (algorithm === 'mlq') {
+            const getPriority = (type: string) => ({ system: 0, interactive: 1, user: 2, batch: 3 }[type] ?? 4);
+            return [
+                { id: 'q_sys', title: 'System Queue', processes: ready.filter(p => getPriority(p.type) === 0) },
+                { id: 'q_int', title: 'Interactive Queue', processes: ready.filter(p => getPriority(p.type) === 1) },
+                { id: 'q_usr', title: 'User Queue', processes: ready.filter(p => getPriority(p.type) === 2) },
+                { id: 'q_bat', title: 'Batch Queue', processes: ready.filter(p => getPriority(p.type) === 3) },
+            ];
+        }
+        else {
+            let sorted = ready;
+            // Apply sorting for visualization matching algorithm (optional, but helpful)
+            if (algorithm === 'sjf' || algorithm === 'srtf') {
+                sorted = [...ready].sort((a, b) => a.remainingTime - b.remainingTime);
+            } else if (algorithm === 'priority') {
+                sorted = [...ready].sort((a, b) => a.priority - b.priority);
+            } else if (algorithm === 'edf') {
+                sorted = [...ready].sort((a, b) => (a.deadline || 999) - (b.deadline || 999));
+            }
+
+            return [{ id: 'main', title: 'Ready Queue', processes: sorted }];
+        }
+    }, [processes, algorithm]);
+
     const runningProcess = processes.find(p => p.state === 'running');
     const waitingParams = processes.filter(p => p.state === 'waiting').sort((a, b) => (a.remainingIOTime || 0) - (b.remainingIOTime || 0));
     const terminated = processes.filter(p => p.state === 'terminated');
@@ -46,38 +79,44 @@ export function AdvancedQueueVisualizer({ processes, isContextSwitching = false,
             <div className="flex flex-col gap-6">
                 {/* Top Row: Ready -> CPU -> Finish */}
                 <div className="flex flex-col md:flex-row items-center gap-4 relative min-h-[160px]">
-                    {/* 1. Ready Queue Area */}
-                    <div className="flex-1 w-full bg-muted/30 rounded-xl p-4 border border-dashed border-border/50 relative min-h-[140px] flex flex-col">
-                        <span className="absolute -top-3 left-4 bg-background px-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                            Ready Queue
-                        </span>
+                    {/* 1. Ready Queue Area (Multi-Queue Supported) */}
+                    <div className="flex-1 w-full flex flex-col gap-2">
+                        {readyQueues.map((queue) => (
+                            <div key={queue.id} className="relative w-full bg-muted/30 rounded-xl p-3 border border-dashed border-border/50 min-h-[100px] flex flex-col justify-center">
+                                <span className="absolute -top-2.5 left-4 bg-background px-2 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider border border-border/50 rounded-full">
+                                    {queue.title}
+                                </span>
 
-                        {readyParams.length === 0 ? (
-                            <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm italic">
-                                Queue Empty
+                                {queue.processes.length === 0 ? (
+                                    <div className="flex items-center justify-center text-muted-foreground text-xs italic opacity-50 h-full">
+                                        Empty
+                                    </div>
+                                ) : (
+                                    <div className="flex items-center gap-2 overflow-x-auto py-1 scrollbar-thin">
+                                        {queue.processes.map((p) => {
+                                            const typeConfig = PROCESS_TYPE_CONFIG[p.type] || PROCESS_TYPE_CONFIG['user'];
+                                            return (
+                                                <div
+                                                    key={p.id}
+                                                    className="flex-shrink-0 w-16 h-20 bg-card border border-primary/20 rounded-lg flex flex-col items-center justify-center shadow-sm relative group"
+                                                >
+                                                    <div className={`absolute top-0.5 left-0.5 w-1.5 h-1.5 rounded-full ${typeConfig.color}`} title={typeConfig.label} />
+                                                    <span className="text-[10px] font-bold text-foreground mb-0.5 mt-1 text-center px-1 truncate w-full">{p.name}</span>
+                                                    <div className="w-full h-[1px] bg-border mb-0.5" />
+                                                    <span className="text-[9px] text-muted-foreground">T: {p.remainingTime}</span>
+                                                    {algorithm === 'edf' && (
+                                                        <span className="text-[8px] text-destructive font-mono">D: {p.deadline}</span>
+                                                    )}
+                                                    <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-secondary text-secondary-foreground rounded-full text-[9px] flex items-center justify-center font-bold shadow-sm">
+                                                        {p.priority}
+                                                    </span>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
                             </div>
-                        ) : (
-                            <div className="flex items-center gap-2 overflow-x-auto py-2 scrollbar-thin h-full">
-                                {readyParams.map((p, idx) => {
-                                    const typeConfig = PROCESS_TYPE_CONFIG[p.type] || PROCESS_TYPE_CONFIG['user'];
-                                    return (
-                                        <div
-                                            key={p.id}
-                                            className="flex-shrink-0 w-20 h-24 bg-card border-2 border-primary/20 rounded-lg flex flex-col items-center justify-center shadow-sm relative group"
-                                        >
-                                            <div className={`absolute top-1 left-1 w-2 h-2 rounded-full ${typeConfig.color}`} title={typeConfig.label} />
-                                            <span className="text-xs font-bold text-foreground mb-1 mt-2 text-center px-1 truncate w-full">{p.name}</span>
-                                            <div className="w-full h-[1px] bg-border mb-1" />
-                                            <span className="text-[10px] text-muted-foreground">BT: {p.remainingTime}</span>
-                                            <span className="text-[9px] text-muted-foreground/70 uppercase tracking-tighter">{typeConfig.label}</span>
-                                            <span className="absolute -top-2 -right-2 w-5 h-5 bg-secondary text-secondary-foreground rounded-full text-[10px] flex items-center justify-center font-bold shadow-sm">
-                                                {p.priority}
-                                            </span>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        )}
+                        ))}
                     </div>
 
                     {/* Arrow */}
@@ -91,13 +130,7 @@ export function AdvancedQueueVisualizer({ processes, isContextSwitching = false,
                             <Cpu className="w-3 h-3" /> CPU Core 1
                         </span>
 
-                        {isContextSwitching ? (
-                            <div className="w-full h-full flex flex-col items-center justify-center animate-pulse text-muted-foreground bg-muted/20 rounded-lg border border-dashed border-border">
-                                <ShuffleIcon className="w-10 h-10 mb-2 opacity-50" />
-                                <span className="text-sm font-medium">Context Switch</span>
-                                <span className="text-xs text-muted-foreground/70 mt-1">Saving state...</span>
-                            </div>
-                        ) : runningProcess ? (
+                        {runningProcess ? (
                             <div className="w-full h-full flex flex-col items-center justify-between p-2">
                                 {/* Running Process Card */}
                                 <div className="w-full flex-1 bg-card text-card-foreground border-2 border-primary/50 rounded-lg shadow-lg flex flex-col items-center justify-center relative overflow-hidden p-2">
@@ -219,23 +252,4 @@ export function AdvancedQueueVisualizer({ processes, isContextSwitching = false,
     );
 }
 
-// Icon for CS
-function ShuffleIcon(props: any) {
-    return (
-        <svg
-            {...props}
-            xmlns="http://www.w3.org/2000/svg"
-            width="24"
-            height="24"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-        >
-            <path d="M2 18h1.4c1.3 0 2.5-.6 3.3-1.7l14.2-12.6c.8-1 2-1.7 3.3-1.7H22" />
-            <path d="M2 6h1.4c1.3 0 2.5.6 3.3 1.7l14.2 12.6c.8 1 2 1.7 3.3 1.7H22" />
-        </svg>
-    )
-}
+

@@ -1,6 +1,6 @@
 export type ProcessState = 'new' | 'ready' | 'running' | 'waiting' | 'terminated';
 
-export type SchedulingAlgorithm = 'fcfs' | 'sjf' | 'priority' | 'round-robin';
+export type SchedulingAlgorithm = 'fcfs' | 'sjf' | 'srtf' | 'priority' | 'round-robin' | 'edf' | 'mlq' | 'mlfq';
 
 export type ProcessType = 'system' | 'user' | 'interactive' | 'batch';
 
@@ -13,6 +13,11 @@ export interface Process {
   remainingTime: number;
   priority: number;
   state: ProcessState;
+
+  // New Scheduling Params
+  queueLevel?: number; // 0, 1, 2 for MLFO
+  deadline?: number;   // For Real-time (EDF)
+
   waitingTime: number;
   turnaroundTime: number;
   responseTime: number;

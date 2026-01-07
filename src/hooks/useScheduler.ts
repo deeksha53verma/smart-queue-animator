@@ -12,16 +12,12 @@ export function useScheduler() {
   const [ganttChart, setGanttChart] = useState<GanttChartEntry[]>([]);
   const [speed, setSpeed] = useState(0.5);
   const [timeQuantum, setTimeQuantum] = useState(2);
-  const [contextSwitchDuration, setContextSwitchDuration] = useState(0.5); // Default 0.5s (simulated as ticks)
-  const [isContextSwitching, setIsContextSwitching] = useState(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
 
   // Refs for logic state
   const currentProcessRef = useRef<Process | null>(null);
   const quantumCounterRef = useRef(0);
   const readyQueueRef = useRef<string[]>([]);
-  const contextSwitchCounterRef = useRef(0);
-  const pendingProcessRef = useRef<Process | null>(null); // Process waiting to start after CS
 
   const addLog = useCallback((message: string, type: LogEntry['type'] = 'info', time?: number) => {
     setLogs(prev => [...prev, {
@@ -37,7 +33,7 @@ export function useScheduler() {
   // However, in runSimulationStep, we have the 'time' variable local to the step.
   // Let's allow passing time explicitly.
 
-  const addProcess = useCallback((name: string, arrivalTime: number, burstTime: number, priority: number, type: Process['type'] = 'user', ioStartTime?: number, ioDuration?: number) => {
+  const addProcess = useCallback((name: string, arrivalTime: number, burstTime: number, priority: number, type: Process['type'] = 'user', ioStartTime?: number, ioDuration?: number, deadline?: number) => {
     const newProcess: Process = {
       id: Math.random().toString(36).substr(2, 9),
       name,
@@ -47,6 +43,8 @@ export function useScheduler() {
       remainingTime: burstTime,
       priority,
       state: 'new',
+      queueLevel: 0, // Default to highest queue for MLFQ
+      deadline,
       waitingTime: 0,
       turnaroundTime: 0,
       responseTime: -1,
@@ -105,47 +103,20 @@ export function useScheduler() {
       };
 
       // Handle Context Switching state
-      if (isContextSwitching) {
-        contextSwitchCounterRef.current++;
-
-        // Visualize CS in Gantt
-        setGanttChart((prevGantt) => {
-          const lastEntry = prevGantt[prevGantt.length - 1];
-          if (lastEntry && lastEntry.isContextSwitch && lastEntry.endTime === time) {
-            return [...prevGantt.slice(0, -1), { ...lastEntry, endTime: time + 1 }];
-          }
-          return [...prevGantt, {
-            processId: 'cs',
-            processName: 'CS',
-            startTime: time,
-            endTime: time + 1,
-            isContextSwitch: true
-          }];
-        });
-
-        if (contextSwitchCounterRef.current >= contextSwitchDuration) {
-          setIsContextSwitching(false);
-          contextSwitchCounterRef.current = 0;
-          // The pending process will be picked up in next tick or logic below if we allow it to fall through
-          // But updated state won't reflect 'isContextSwitching' false until next render/tick effectively
-          // So we just return here and let next tick handle the actual execution start
-
-          // Actually, let's force the transition now if we have a pending process
-          if (pendingProcessRef.current) {
-            // We need to set it as running in the *updated* array effectively?
-            // The logic below 'if (!updated.some(p => p.state === running))' will pick it up
-            // provided we cleared current process.
-          }
-        }
-        setCurrentTime((prev) => prev + 1);
-        return updated;
-      }
+      // (Removed Context Switching Logic)
 
       // Move new processes to ready state if they've arrived
       updated.forEach((p) => {
         if (p.state === 'new' && p.arrivalTime <= time) {
           p.state = 'ready';
-          if (algorithm === 'round-robin' && !readyQueueRef.current.includes(p.id)) {
+          // Initialize queueLevel if undefined
+          if (p.queueLevel === undefined) p.queueLevel = 0;
+
+          if ((algorithm === 'round-robin' || algorithm === 'mlfq') && !readyQueueRef.current.includes(p.id)) {
+            // For MLFQ, we might want separate queues, but for simplicity we manage one ID list 
+            // and filter by queueLevel in getNextProcess. 
+            // However, RR rotation needs explicit queue.
+            // Let's rely on 'readyQueue' for RR/MLFQ rotation order.
             readyQueueRef.current.push(p.id);
           }
         }
@@ -160,11 +131,13 @@ export function useScheduler() {
           if ((p.remainingIOTime || 0) <= 0) {
             p.state = 'ready';
             p.remainingIOTime = p.ioDuration || 0; // Reset for next I/O if recursive? Or just one off? Plan said one off usually, or we reset. Let's assume one-off for now or loop?
-            // Usually I/O burst is part of CPU burst cycle. Here user sets "IO Start Time" relative to burst.
-            // If we want it to happen ONLY once, we should flag it as done.
-            // But 'remainingIOTime' reaching 0 implies done.
 
-            if (algorithm === 'round-robin') {
+            // For MLFQ: I/O usually keeps priority or promotes?
+            // Standard Rule: If process gives up CPU before quantum expires, it stays at same priority.
+            // Some variations promote. Let's start with STAY.
+            // p.queueLevel remains same.
+
+            if (algorithm === 'round-robin' || algorithm === 'mlfq') {
               readyQueueRef.current.push(p.id);
             }
             log(`Process ${p.name} completed I/O and moved to Ready.`, 'info');
@@ -175,23 +148,40 @@ export function useScheduler() {
       // Get current running process
       const runningProcess = updated.find((p) => p.state === 'running');
 
-      // Handle Round Robin preemption
-      if (algorithm === 'round-robin' && runningProcess) {
+      // Handle Round Robin & MLFQ preemption/quantum
+      if ((algorithm === 'round-robin' || algorithm === 'mlfq') && runningProcess) {
         quantumCounterRef.current++;
 
-        if (quantumCounterRef.current >= timeQuantum) {
+        // Determine effective quantum for MLFQ
+        let effectiveQuantum = timeQuantum;
+        if (algorithm === 'mlfq') {
+          // Rule: Q0 = 4, Q1 = 8, Q2 = FCFS (Infinity)
+          // We can use base 'timeQuantum' as multiplier or fixed 4.
+          const q = runningProcess.queueLevel || 0;
+          if (q === 0) effectiveQuantum = 4;
+          else if (q === 1) effectiveQuantum = 8;
+          else effectiveQuantum = 999999; // FCFS
+        }
+
+        if (quantumCounterRef.current >= effectiveQuantum) {
           // Time quantum expired - preempt
           if (runningProcess.remainingTime > 0) {
             runningProcess.state = 'ready';
+
+            // MLFQ Rule: If used full quantum, demote
+            if (algorithm === 'mlfq') {
+              const currentQ = runningProcess.queueLevel || 0;
+              if (currentQ < 2) {
+                runningProcess.queueLevel = currentQ + 1;
+                log(`${runningProcess.name} demoted to Queue ${runningProcess.queueLevel}`, 'warning');
+              }
+            }
+
             readyQueueRef.current.push(runningProcess.id);
             log(`Time Quantum expired for ${runningProcess.name}. Moved to ready queue.`, 'info');
 
             // Trigger Context Switch
-            if (contextSwitchDuration > 0) {
-              setIsContextSwitching(true);
-              currentProcessRef.current = null;
-              // No specific pending process yet, scheduler will pick next
-            }
+            // (Removed CS Trigger)
           }
           quantumCounterRef.current = 0;
           currentProcessRef.current = null;
@@ -210,15 +200,77 @@ export function useScheduler() {
           log(`Process ${runningProcess.name} started I/O wait.`, 'warning');
 
           // Trigger Context Switch? Usually yes, CPU is free.
-          if (contextSwitchDuration > 0) {
-            setIsContextSwitching(true);
-            // Scheduler will pick next
+          // (Removed CS Trigger)
+        }
+      }
+
+      // Preemption Check for SJF (SRTF), Priority, and EDF
+      const preemptiveAlgos = ['sjf', 'srtf', 'priority', 'edf', 'mlq', 'mlfq'];
+      // Note: MLFQ is preemptive if higher prio arrives. MLQ also.
+
+      if (runningProcess && preemptiveAlgos.includes(algorithm)) {
+        const potentialBetter = getNextProcess(updated, algorithm, time);
+
+        if (potentialBetter && potentialBetter.id !== runningProcess.id) {
+          // Check if we should preempt
+          let shouldPreempt = false;
+
+          // MLFQ/MLQ Preemption: Higher Queue (Lower Index) preempts Lower Queue
+          if (algorithm === 'mlfq' || algorithm === 'mlq') {
+            const runningQ = algorithm === 'mlfq'
+              ? (runningProcess.queueLevel || 0)
+              : ({ system: 0, interactive: 1, user: 2, batch: 3 }[runningProcess.type] ?? 4);
+
+            const betterQ = algorithm === 'mlfq'
+              ? (potentialBetter.queueLevel || 0)
+              : ({ system: 0, interactive: 1, user: 2, batch: 3 }[potentialBetter.type] ?? 4);
+
+            if (betterQ < runningQ) {
+              shouldPreempt = true;
+            }
+          }
+          // SRTF Preemption
+          else if (algorithm === 'srtf' || algorithm === 'sjf') {
+            // For SRTF: Preempt if candidate has shorter remaining time
+            if (potentialBetter.remainingTime < runningProcess.remainingTime) {
+              shouldPreempt = true;
+            }
+          }
+          // Priority Preemption
+          else if (algorithm === 'priority') {
+            if (potentialBetter.priority < runningProcess.priority) {
+              shouldPreempt = true;
+            }
+          }
+          // EDF Preemption
+          else if (algorithm === 'edf') {
+            // Preempt if new process has earlier deadline
+            const d1 = runningProcess.deadline ?? Number.MAX_SAFE_INTEGER;
+            const d2 = potentialBetter.deadline ?? Number.MAX_SAFE_INTEGER;
+            if (d2 < d1) {
+              shouldPreempt = true;
+            }
+          }
+
+          if (shouldPreempt) {
+            runningProcess.state = 'ready';
+            currentProcessRef.current = null;
+            // Add back to ready queue logic for RR/MLFQ if needed
+            if (algorithm === 'mlfq') {
+              // Preempted by higher priority -> put at HEAD of its queue or Tail? 
+              // Usually Tail of its level.
+              readyQueueRef.current.push(runningProcess.id);
+            }
+
+            // Ensure it's available for selection immediately
+            // The selection logic below will pick 'potentialBetter'
+            log(`Preempting ${runningProcess.name} for ${potentialBetter.name}`, 'warning');
           }
         }
       }
 
       // If no running process (and not switching), select next one
-      if (!updated.some((p) => p.state === 'running') && !isContextSwitching) {
+      if (!updated.some((p) => p.state === 'running')) {
         let nextProcess: Process | null = null;
 
         if (algorithm === 'round-robin') {
@@ -231,36 +283,27 @@ export function useScheduler() {
               break;
             }
           }
-        } else {
+        }
+        else if (algorithm === 'mlfq') {
+          // For MLFQ, we need to pick from Highest Priority Queue (0) first.
+          // We can reuse 'getNextProcess' to find the *Best* candidate.
+          // But if it's RR within queue, we need to respect the rotation.
+          // Simplified MLFQ: Just use getNextProcess which picks Lowest QueueLevel.
+          // We don't implement full Queue Rotation within levels for this complexity yet.
+          // It defaults to FCFS within levels unless we implement multiple readyQueues.
+          // Let's stick to getNextProcess which is FCFS per level.
+          nextProcess = getNextProcess(updated, algorithm, time);
+
+          // If we picked one, and there are others same level, FCFS does head of line.
+          // To do RR within levels, we'd need multiple refs. 
+          // Let's accept FCFS within levels for now, or just RR globally?
+          // getNextProcess uses FCFS for tie-breaking.
+        }
+        else {
           nextProcess = getNextProcess(updated, algorithm, time);
         }
 
         if (nextProcess) {
-          // Check if we need to context switch (if we weren't already)
-          // If we just finished a context switch, 'isContextSwitching' is false, so we proceed.
-          // Ideally we trigger CS *before* this selection if previous process was preempted/terminated.
-          // But for initial start or idle->run, maybe CS? 
-          // Let's assume CS happens on SWITCH. Idle -> Process might differ.
-          // Simplification: If we just picked a process and we have CS duration, and we aren't coming from a CS...
-          // But treating "just picked" IS the moment.
-
-          // Logic: If 'pendingProcessRef' was set, we are resuming from CS? No.
-          // Let's just run it.
-
-          // WAIT: Logic flow.
-          // 1. Running process runs. Terminate/Preempt -> set to null. Trigger CS if needed.
-          // 2. CS runs. Ends -> set isContextSwitching 'false'.
-          // 3. Loop comes here. Selects next.
-
-          // Case: Idle -> New Process. Should we CS? Real RTOS usually yes (dispatcher).
-          // Let's keep it simple: Only if we had a previous process running recently? 
-          // User asked: "Whenever the CPU switches from one process to another".
-
-          // Implementation:
-          // If we selected a process `nextProcess`.
-          // If `currentProcessRef.current` was null (CPU free).
-          // Note: if we just finished CS, we are good to go.
-
           const process = updated.find((p) => p.id === nextProcess!.id)!;
           process.state = 'running';
 
@@ -293,8 +336,32 @@ export function useScheduler() {
               },
             ];
           });
+        } else {
+          // No next process found -> CPU IDLE or I/O Wait
+          const hasWaiting = updated.some(p => p.state === 'waiting');
+          const typeId = hasWaiting ? 'io-wait' : 'idle';
+          const typeName = hasWaiting ? 'I/O Wait' : 'Idle';
+
+          setGanttChart((prevGantt) => {
+            const lastEntry = prevGantt[prevGantt.length - 1];
+            if (lastEntry && lastEntry.processId === typeId && lastEntry.endTime === time) {
+              return [
+                ...prevGantt.slice(0, -1),
+                { ...lastEntry, endTime: time + 1 },
+              ];
+            }
+            return [
+              ...prevGantt,
+              {
+                processId: typeId,
+                processName: typeName,
+                startTime: time,
+                endTime: time + 1,
+              },
+            ];
+          });
         }
-      } else if (runningProcess && !isContextSwitching) {
+      } else if (runningProcess) {
         // Update Gantt chart for continuing process
         setGanttChart((prevGantt) => {
           const lastEntry = prevGantt[prevGantt.length - 1];
@@ -324,9 +391,7 @@ export function useScheduler() {
           log(`Process ${currentRunning.name} completed!`, 'success');
 
           // Trigger CS on termination as well? Usually scheduler runs.
-          if (contextSwitchDuration > 0 && updated.some(p => p.state === 'ready')) {
-            setIsContextSwitching(true);
-          }
+          // (Removed CS Trigger on Termination)
         }
       }
 
@@ -357,7 +422,7 @@ export function useScheduler() {
     // The previous useEffect implementation for auto-stop is good.
 
     setCurrentTime((prev) => prev + 1);
-  }, [currentTime, algorithm, timeQuantum, processes.length, contextSwitchDuration, isContextSwitching]);
+  }, [currentTime, algorithm, timeQuantum, processes.length]);
 
   // Use a ref to hold the latest runSimulationStep without triggering effect
   const runSimulationStepRef = useRef(runSimulationStep);
@@ -411,6 +476,7 @@ export function useScheduler() {
         ...p,
         state: 'new' as const,
         remainingTime: p.burstTime,
+        queueLevel: 0, // Reset MLFQ level
         waitingTime: 0,
         turnaroundTime: 0,
         responseTime: -1,
@@ -424,11 +490,9 @@ export function useScheduler() {
     setGanttChart([]);
     setIsRunning(false);
     setIsPaused(false);
-    setIsContextSwitching(false); // Reset CS state
     currentProcessRef.current = null;
     quantumCounterRef.current = 0;
     readyQueueRef.current = [];
-    contextSwitchCounterRef.current = 0;
     setLogs([{
       id: Math.random().toString(36).substr(2, 9),
       time: 0,
@@ -474,9 +538,6 @@ export function useScheduler() {
     stepSimulation,
     resetSimulation,
     allCompleted,
-    logs,
-    contextSwitchDuration,
-    setContextSwitchDuration,
-    isContextSwitching
+    logs
   };
 }

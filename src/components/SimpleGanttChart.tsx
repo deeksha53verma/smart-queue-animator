@@ -60,11 +60,11 @@ export function SimpleGanttChart({ entries, processes, currentTime }: SimpleGant
             {Array.from({ length: maxTime + 1 }).map((_, i) => (
               <div
                 key={i}
-                className="flex-shrink-0 flex flex-col items-center"
+                className="flex-shrink-0 flex flex-col items-start relative box-border"
                 style={{ width: '60px' }} // Fixed scale
               >
                 <div className="w-px h-full bg-border/20" />
-                <span className="absolute bottom-1 text-[10px] text-foreground/70 font-mono">
+                <span className="absolute bottom-1 -left-1 text-[10px] text-foreground/70 font-mono translate-x-[-25%]">
                   {i}
                 </span>
               </div>
@@ -79,9 +79,11 @@ export function SimpleGanttChart({ entries, processes, currentTime }: SimpleGant
               const typeConfig = process ? PROCESS_TYPE_CONFIG[process.type] : null;
 
               // Use explicit hex colors from config or fallback
-              const colorClass = entry.isContextSwitch
-                ? 'bg-gray-400/50 border-gray-500'
-                : (typeConfig ? typeConfig.color : (processColorMap.current[entry.processId] || colors[0]));
+              const colorClass = entry.processId === 'idle'
+                ? 'bg-gray-100 dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-muted-foreground/50'
+                : entry.processId === 'io-wait'
+                  ? 'bg-orange-100 dark:bg-orange-900/20 border-orange-300 dark:border-orange-700 text-orange-600 dark:text-orange-400 dashed-border'
+                  : (typeConfig ? typeConfig.color : (processColorMap.current[entry.processId] || colors[0]));
 
               const width = (entry.endTime - entry.startTime) * 60;
               const left = entry.startTime * 60;
@@ -101,11 +103,19 @@ export function SimpleGanttChart({ entries, processes, currentTime }: SimpleGant
                   }}
                   title={`${entry.processName}: ${entry.startTime}-${entry.endTime}`}
                 >
-                  <span className="truncate w-full text-center px-1 text-white shadow-sm">
+                  <span className={cn(
+                    "truncate w-full text-center px-1 shadow-sm",
+                    entry.processId === 'idle' ? "text-muted-foreground/50" :
+                      entry.processId === 'io-wait' ? "text-orange-600 dark:text-orange-400" : "text-white"
+                  )}>
                     {entry.processName}
                   </span>
-                  {!entry.isContextSwitch && width > 40 && (
-                    <span className="text-[10px] text-white/90 font-mono">
+                  {width > 40 && (
+                    <span className={cn(
+                      "text-[10px] font-mono",
+                      entry.processId === 'idle' ? "text-muted-foreground/40" :
+                        entry.processId === 'io-wait' ? "text-orange-600/80 dark:text-orange-400/80" : "text-white/90"
+                    )}>
                       {entry.endTime - entry.startTime}ms
                     </span>
                   )}
@@ -132,12 +142,8 @@ export function SimpleGanttChart({ entries, processes, currentTime }: SimpleGant
               <span className="text-foreground font-medium">{config.label}</span>
             </div>
           ))}
-          <div className="flex items-center gap-2 text-xs">
-            <div className="w-4 h-4 rounded bg-gray-400/50 border border-gray-500" />
-            <span className="text-foreground font-medium">Context Switch</span>
-          </div>
         </div>
       )}
     </div>
-  );
+  )
 }

@@ -35,9 +35,6 @@ const Index = () => {
     resetSimulation,
     allCompleted,
     logs,
-    isContextSwitching,
-    contextSwitchDuration,
-    setContextSwitchDuration
   } = useSchedulerContext();
 
   return (
@@ -115,8 +112,8 @@ const Index = () => {
                 hasProcesses={processes.length > 0}
                 speed={speed}
                 onSpeedChange={setSpeed}
-                contextSwitchDuration={contextSwitchDuration}
-                onContextSwitchDurationChange={setContextSwitchDuration}
+                timeQuantum={timeQuantum}
+                onTimeQuantumChange={setTimeQuantum}
               />
 
               <ConceptCard algorithm={algorithm} />
@@ -130,8 +127,8 @@ const Index = () => {
               <AdvancedQueueVisualizer
                 processes={processes}
                 onRemove={removeProcess}
-                isContextSwitching={isContextSwitching}
                 speed={speed}
+                algorithm={algorithm}
               />
 
               {/* Gantt Chart */}
@@ -184,6 +181,7 @@ const Index = () => {
         open={showAddModal}
         onClose={() => setShowAddModal(false)}
         onAdd={addProcess}
+        algorithm={algorithm}
       />
     </div>
   );
